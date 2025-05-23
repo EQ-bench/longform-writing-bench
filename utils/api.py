@@ -160,14 +160,9 @@ class APIClient:
         """
         payload = self._prepare_payload(model, messages, temperature, max_tokens, min_p)
 
-        #print('-----------------------------')
-        #for el in messages:
-        #    print(el['content'])
-        #print('-----------------------------')
 
-        #if model in ['meta-llama/llama-4-scout', 'meta-llama/llama-4-maverick']:
-        if model in ['meta-llama/llama-4-scout', 'meta-llama/llama-4-maverick']:
-        #if model in ['meta-llama/llama-4-scout']:
+        # set a specific provider on openrouter if required
+        if False and model in ['meta-llama/llama-4-scout', 'meta-llama/llama-4-maverick']:
             print('groqqing')
             payload['provider'] =  {
                 "order": [
@@ -205,15 +200,8 @@ class APIClient:
                 system_msg = [{"role": "system", "content": "/no_think"}]
                 messages = system_msg + messages
 
-        if 'proxy.runpod.net' in self.base_url:
-            if model.startswith('sam-paech/Qwen3'):
-                print('/no_think')
-                system_msg = [{"role": "system", "content": "/no_think"}]
-                messages = system_msg + messages
-
         for attempt in range(self.max_retries):
             logging.debug(f"API Call Attempt {attempt+1}/{self.max_retries} to {self.model_type} model {model} via {self.base_url}")
-            # logging.debug(f"Payload: {json.dumps(payload, indent=2)}") # Uncomment for deep debugging
 
             response = None # Initialize response variable
             try:
@@ -229,8 +217,6 @@ class APIClient:
                 content = self._extract_content(data)
                 if not content and self.provider == "anthropic" and data.get("stop_reason") == "max_tokens":
                      logging.warning(f"Anthropic response stopped due to max_tokens ({max_tokens}). Content might be incomplete.")
-                     # Return potentially incomplete content anyway
-                     # Or handle differently if needed
 
                 logging.debug(f"API Call Successful. Received ~{len(content)} chars.")
                 return content
