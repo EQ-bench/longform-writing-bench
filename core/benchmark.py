@@ -495,17 +495,15 @@ def run_longform_bench(
     final_run_data = load_json_file(runs_file).get(run_key, {})
     final_results = final_run_data.get("results", {}).get("benchmark_results", {})
     final_score_100 = final_results.get('eqbench_longform_score_0_100', 'N/A')
-    final_score_20 = final_results.get('overall_score_0_20', 'N/A')
     ci_lower = final_results.get('bootstrap_analysis', {}).get('ci_lower', 'N/A')
     ci_upper = final_results.get('bootstrap_analysis', {}).get('ci_upper', 'N/A')
 
     print("\n--- Benchmark Summary ---")
     print(f"Run Key: {run_key}")
     print(f"Test Model: {test_model}")
-    print(f"Overall Score (0-100): {final_score_100}")
-    print(f"Overall Score (0-20): {final_score_20}")
+    print(f"Longform Writing Score: {final_score_100}")
     if ci_lower != 'N/A':
-        print(f"95% CI (0-20 scale): ({ci_lower:.2f}, {ci_upper:.2f})")
+        print(f"95% CI: ({ci_lower * 5:.2f}, {ci_upper * 5:.2f})")
     print(f"Results saved in: {runs_file}")
     print("------------------------")
 
