@@ -1,21 +1,19 @@
 # Longform Creative Writing Benchmark
 
-A self-contained benchmark for evaluating large-language-model performance on **long-form creative writing**.  
-It automates everything:
+A comprehensive benchmark for evaluating language models' abilities in creative writing, planning, and narrative construction. This benchmark tests models on their capacity to brainstorm, plan, revise, and write complete short stories/novellas from minimal prompts.
 
-1. **Generation** – prompts the *test* model to brainstorm, plan, and write an eight-chapter novella.  
-2. **Judging** – asks a separate *judge* model to score each chapter and the final story against a rubric.  
-3. **Scoring** – aggregates the scores, runs a bootstrap stability check, and stores results in a single JSON log.
+This codebase can be used to reproduce results on: https://eqbench.com/creative_writing_longform.html
 
----
+## Overview
 
-## Why this matters
-Most LLM benchmarks stop at single-turn tasks.  Good stories require sustained planning, character consistency, and narrative payoff across thousands of tokens.  This benchmark stresses those abilities while keeping setup friction low:
+The benchmark evaluates several key abilities:
+- **Brainstorming & Planning**: Creating a coherent story plan from a minimal prompt
+- **Critical Reflection**: Reviewing and revising the initial plan
+- **Character Development**: Creating detailed character profiles
+- **Long-form Writing**: Producing a complete novella across 8 chapters (~1000 words each)
+- **Narrative Consistency**: Maintaining plot coherence and character consistency throughout
 
-* **Single command** to run end-to-end.
-* **Thread-safe, crash-resilient** logging – you can kill the process and resume later.
-* **Pluggable**: bring any OpenAI-style or Anthropic-style chat model (local or API).
-* **Transparent**: all intermediate outputs and judge rationales are saved for inspection.
+Models on the EQ-Bench leaderboard are evaluated with Claude Sonnet 3.7 as a judge, although you can use whichever judge you wish. The judge scores outputs across multiple criteria including creativity, coherence, character development, and prose quality.
 
 ---
 
@@ -36,7 +34,7 @@ python3 longform_writing_bench.py \
     --judge-model "anthropic/claude-3.7-sonnet" \
     --runs-file   "results/longform_bench_runs.json" \
     --run-id      "demo" \
-    --threads     4 \
+    --threads     12 \
     --iterations  1
 ````
 
