@@ -1,0 +1,9 @@
+Great now let's continue with planning the short story. Output in this format:
+
+# Intention
+
+<State your formulated intentions for the piece, synthesised from the the parts of the brainstorming session that worked, and avoiding the parts that didn't. Be explicit about the choices you have made about plot, voice, stylistic choices, things you intend to aim for & avoid.>
+
+# Chapter Planning
+
+<Write a brief chapter plan for all {n_chapters} chapters.>

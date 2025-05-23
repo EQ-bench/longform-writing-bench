@@ -1,0 +1,1 @@
+Copyright 2011 The Bitter Project Authors (https://github.com/solmatas/bitter)

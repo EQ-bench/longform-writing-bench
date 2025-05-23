@@ -1,0 +1,266 @@
+
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Longform Outputs: sam-paech/Qwen3-14B-antislop-exp17</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            /* --- PASTE THE FULL CSS FROM THE PREVIOUS CREATIVE WRITING NOTEBOOK HERE --- */
+            /* Lora (Used for Cozy Headers) */
+            @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400..700;1,400..700&display=swap');
+            /* Merriweather (Used for Modern Headers - fallback) */
+            @import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap');
+
+            :root {
+                --theme-name: 'cozy';
+                --font-body-cozy: 'Tiempos Text', Georgia, serif;
+                --font-heading-cozy: 'Lora', serif;
+                --font-body-modern: 'Inter', sans-serif;
+                --font-heading-modern: 'Besley', 'Merriweather', serif;
+                --font-ui: 'Lora', sans-serif;
+                --font-body: var(--font-body-cozy);
+                --font-heading: var(--font-heading-cozy);
+                --bg-color: #fdfaf6;
+                --text-color: #3a3a3a;
+                --header-color: #5c4033;
+                --subheader-color: #7a6a60;
+                --border-color: #e0dcd1;
+                --accent-border-color: #d3c0a5;
+                --container-bg: #fffcf7;
+                --iter-header-bg: #f5f0e8;
+                --iter-header-hover-bg: #ede8de;
+                --prompt-header-bg: #faf5ef; /* Changed for step header */
+                --prompt-header-hover-bg: #f5f0e8; /* Changed for step header */
+                --judge-bg: #f3f6f9;
+                --judge-border: #c8d7e6;
+                --judge-text: #555;
+                --prompt-display-bg: #f9f6f0;
+                --toggle-icon-color: #8a7a70;
+                --shadow-color: rgba(0, 0, 0, 0.08);
+                --link-color: #7a6a60;
+                --link-hover-color: #5c4033;
+                --select-text-color: var(--subheader-color);
+                --select-chevron-color: var(--subheader-color);
+                --select-bg: transparent;
+                --select-border: none;
+                --step-prompt-bg: #fefcf9; /* Slightly different bg for step prompt */
+                --step-prompt-border: #e8e4da;
+                --judge-header-bg: transparent; /* <<< CHANGE >>> Style for judge header */
+                --judge-header-hover-bg: #f5f5f0; /* <<< CHANGE >>> Style for judge header */
+                --judge-header-color: var(--subheader-color); /* <<< CHANGE >>> Style for judge header */
+            }
+            body.theme-cozy.dark-mode {
+                --bg-color: #2a2527; --text-color: #fff9f2; --header-color: #f7eee0;
+                --subheader-color: #e9dfd0; --border-color: #3e3936; --accent-border-color: #6a5349;
+                --container-bg: #312c2e; --iter-header-bg: #342e2f; --iter-header-hover-bg: #413935;
+                --prompt-header-bg: #312b2d; --prompt-header-hover-bg: #3a3234;
+                --judge-bg: #2f3136; --judge-border: #4e4944; --judge-text: #fcf5eb;
+                --prompt-display-bg: #302a2c; --toggle-icon-color: #c0b0a0; --shadow-color: #0c0705;
+                --link-color: #d0bca8; --link-hover-color: #ebdac5;
+                --select-text-color: var(--subheader-color); --select-chevron-color: var(--subheader-color);
+                --step-prompt-bg: #353032; --step-prompt-border: #4a4441;
+                --judge-header-hover-bg: #3f3a3c; /* <<< CHANGE >>> Dark judge header */
+                --judge-header-color: var(--subheader-color); /* <<< CHANGE >>> Dark judge header */
+            }
+            body.theme-modern {
+                --theme-name: 'modern';
+                --font-body: var(--font-body-modern); --font-heading: var(--font-heading-modern);
+                --bg-color: #ffffff; --text-color: #212529; --header-color: #000000;
+                --subheader-color: #495057; --border-color: #dee2e6; --accent-border-color: #adb5bd;
+                --container-bg: #ffffff; --iter-header-bg: #f8f9fa; --iter-header-hover-bg: #e9ecef;
+                --prompt-header-bg: #ffffff; --prompt-header-hover-bg: #f8f9fa;
+                --judge-bg: #f1f3f5; --judge-border: #ced4da; --judge-text: #343a40;
+                --prompt-display-bg: #f8f9fa; --toggle-icon-color: #6c757d; --shadow-color: rgba(0, 0, 0, 0.1);
+                --link-color: #007bff; --link-hover-color: #0056b3;
+                --select-text-color: var(--subheader-color); --select-chevron-color: var(--subheader-color);
+                --step-prompt-bg: #ffffff; --step-prompt-border: #e9ecef;
+                --judge-header-hover-bg: #f1f3f5; /* <<< CHANGE >>> Modern judge header */
+                --judge-header-color: var(--subheader-color); /* <<< CHANGE >>> Modern judge header */
+            }
+            body.theme-modern.dark-mode {
+                --bg-color: #1a1a1a; --text-color: #e9ecef; --header-color: #ffffff;
+                --subheader-color: #adb5bd; --border-color: #495057; --accent-border-color: #6c757d;
+                --container-bg: #212529; --iter-header-bg: #343a40; --iter-header-hover-bg: #495057;
+                --prompt-header-bg: #2c3034; --prompt-header-hover-bg: #343a40;
+                --judge-bg: #343a40; --judge-border: #495057; --judge-text: #ced4da;
+                --prompt-display-bg: #343a40; --toggle-icon-color: #adb5bd; --shadow-color: rgba(0, 0, 0, 0.3);
+                --link-color: #69b1ff; --link-hover-color: #a8d1ff;
+                --select-text-color: var(--subheader-color); --select-chevron-color: var(--subheader-color);
+                --step-prompt-bg: #212529; --step-prompt-border: #343a40;
+                --judge-header-hover-bg: #40454a; /* <<< CHANGE >>> Modern dark judge header */
+                --judge-header-color: var(--subheader-color); /* <<< CHANGE >>> Modern dark judge header */
+            }
+            body {
+                font-family: var(--font-body); line-height: 1.7; color: var(--text-color);
+                background-color: var(--bg-color); max-width: 900px; margin: 30px auto;
+                padding: 40px 50px; border: 1px solid var(--border-color);
+                box-shadow: 0 5px 15px var(--shadow-color); transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+            }
+            h1, h2, h3, h4 {
+                font-family: var(--font-heading); color: var(--header-color); margin-top: 2em;
+                margin-bottom: 0.8em; line-height: 1.3; transition: color 0.3s;
+            }
+            h1 { text-align: center; font-size: 2.5em; border-bottom: 2px solid var(--accent-border-color); padding-bottom: 15px; margin-bottom: 1.5em; font-weight: 700; transition: border-color 0.3s; font-family: var(--font-ui) !important; }
+            h2 { font-size: 1.8em; font-weight: 700; }
+            h3 { font-size: 1.4em; font-style: italic; font-weight: 400; color: var(--subheader-color); }
+            h4 { font-size: 1.1em; font-weight: bold; color: var(--subheader-color); margin-top: 1.5em; margin-bottom: 0.5em; } /* Style for step prompts/outputs and Final Eval */
+            strong { font-weight: bold; color: var(--header-color); transition: color 0.3s; }
+            a { color: var(--link-color); text-decoration: none; transition: color 0.3s; }
+            a:hover { color: var(--link-hover-color); text-decoration: underline; }
+            .top-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid var(--border-color); transition: border-color 0.3s; font-family: var(--font-ui) !important; }
+            .back-button { font-family: var(--font-ui) !important; font-size: 1em; color: var(--select-text-color); transition: color 0.3s; }
+            .controls-right { display: flex; align-items: center; gap: 15px; }
+            body.theme-cozy.dark-mode { box-shadow: 0 5px 20px var(--shadow-color); background-image: linear-gradient(to bottom, #211f21, #232022); }
+            body.theme-cozy.dark-mode .iteration-container { box-shadow: 0 2px 8px #000000; border-color: var(--border-color); }
+            body.theme-cozy.dark-mode h1 { text-shadow: 0 1px 2px #000000; }
+            body.theme-cozy.dark-mode .content-block { border-color: var(--border-color); }
+            body.theme-cozy.dark-mode .prompt-text-display { border-left: 3px solid var(--accent-border-color); background-color: #362e2b; }
+            body.theme-cozy.dark-mode .scores-container { color: #b0a598; }
+            body.theme-modern { padding: 35px 45px; }
+            body.theme-modern h1 { font-weight: 600; border-bottom-width: 1px; }
+            body.theme-modern h2 { font-weight: 600; }
+            body.theme-modern h3 { font-weight: 500; font-style: normal; }
+            body.theme-modern .iteration-header { font-weight: 600; }
+            body.theme-modern .prompt-header { font-weight: 500; font-style: normal; }
+            body.theme-modern .prompt-text-display { border-left-width: 4px; border-radius: 3px; font-style: normal; }
+            body.theme-modern .judge-content { border-style: solid; border-width: 1px; }
+            body.theme-modern strong { font-weight: 600; }
+            .control-select-wrapper { position: relative; display: inline-block; }
+            .control-select { font-family: var(--font-ui) !important; font-size: 0.9em; color: var(--select-text-color); background-color: var(--select-bg); border: none; padding: 2px 5px 2px 18px; margin: 0; cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none; transition: color 0.3s; border-radius: 0; }
+            .control-select:focus { outline: none; }
+            .control-select-wrapper::before { content: '▼'; font-size: 0.6em; color: var(--select-chevron-color); position: absolute; left: 5px; top: 50%; transform: translateY(-50%); pointer-events: none; transition: color 0.3s; }
+            .control-select option { background-color: var(--bg-color); color: var(--text-color); font-family: var(--font-ui); }
+            .mode-toggle { display: flex; align-items: center; font-family: var(--font-ui) !important; }
+            .mode-toggle .form-check-input { opacity: 0; width: 0; height: 0; position: absolute; }
+            .mode-toggle .form-check-label { font-family: var(--font-ui) !important; font-size: 0.9em; color: var(--subheader-color); cursor: pointer; transition: color 0.3s; user-select: none; padding: 2px 5px; }
+            .mode-toggle .form-check-label:hover { color: var(--link-hover-color); }
+            .iteration-container { margin: 30px 0; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; background-color: var(--container-bg); box-shadow: 0 2px 5px rgba(0,0,0,0.05); transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s; }
+            .iteration-header { background: var(--iter-header-bg); padding: 12px 20px; cursor: pointer; position: relative; border-bottom: 1px solid var(--border-color); font-size: 1.2em; font-weight: 700; color: var(--header-color); transition: background-color 0.3s, border-color 0.3s, color 0.3s; }
+            .iteration-header:hover { background: var(--iter-header-hover-bg); }
+            .prompt-container { border-top: 1px dotted var(--border-color); padding-top: 15px; margin-top: 15px; transition: border-color 0.3s; } /* Used for steps now */
+            .prompt-container:first-child { border-top: none; margin-top: 0; padding-top: 0; }
+            .prompt-header { background: var(--prompt-header-bg); padding: 10px 20px; cursor: pointer; font-size: 1.1em; font-weight: 400; color: var(--subheader-color); transition: background-color 0.3s, color 0.3s; border-bottom: 1px solid var(--border-color); } /* Style for collapsible section headers (Planning, Chapters) */
+            .prompt-header:hover { background: var(--prompt-header-hover-bg); }
+            .content-block { padding: 15px 25px; border-top: 1px solid var(--border-color); background-color: var(--container-bg); transition: background-color 0.3s, border-color 0.3s; }
+            .response-content { white-space: pre-wrap; font-family: var(--font-body); font-size: 1.05em; line-height: 1.7; margin-bottom: 15px; color: var(--text-color); transition: color 0.3s; }
+            .judge-content { white-space: pre-wrap; font-family: var(--font-body); font-size: 1.0em; line-height: 1.6; background: var(--judge-bg); border: 1px dashed var(--judge-border); padding: 10px 15px; margin-top: 10px; border-radius: 3px; color: var(--judge-text); transition: background-color 0.3s, border-color 0.3s, color 0.3s; }
+             /* <<< CHANGE >>> Header for collapsible judge section */
+            .judge-header { background: var(--judge-header-bg); padding: 6px 10px; margin-top: 10px; cursor: pointer; font-size: 0.95em; font-weight: normal; color: var(--judge-header-color); transition: background-color 0.3s, color 0.3s; border-radius: 3px 3px 0 0; border: 1px solid var(--border-color); border-bottom: none; }
+            .judge-header:hover { background: var(--judge-header-hover-bg); }
+            /* <<< CHANGE >>> Adjust judge content border when inside collapsible */
+            .collapsible-judge-content .judge-content { margin-top: 0; border-radius: 0 0 3px 3px; border-top: none; }
+            .prompt-text-display { font-style: italic; color: var(--subheader-color); margin-bottom: 1em; padding: 10px 15px; background-color: var(--prompt-display-bg); border-left: 3px solid var(--accent-border-color); white-space: pre-wrap; font-family: var(--font-body); transition: background-color 0.3s, border-color 0.3s, color 0.3s, font-style 0.3s; }
+            .step-prompt-text { /* Specific style for step prompts */
+                font-style: normal; /* Less emphasis than initial prompt */
+                color: var(--subheader-color);
+                margin-bottom: 1em;
+                padding: 8px 12px;
+                background-color: var(--step-prompt-bg);
+                border: 1px solid var(--step-prompt-border);
+                border-radius: 3px;
+                white-space: pre-wrap;
+                font-family: var(--font-body);
+                font-size: 0.95em;
+                transition: background-color 0.3s, border-color 0.3s, color 0.3s;
+            }
+            .collapsible-content { display: none; padding: 15px 20px; background-color: var(--container-bg); transition: background-color 0.3s; }
+             /* <<< CHANGE >>> Adjust padding for nested collapsible content */
+            .collapsible-content .collapsible-content { padding: 10px 15px; }
+            .collapsible-content.planning-steps, .collapsible-content.chapter-steps { padding-top: 0; padding-bottom: 0; } /* Remove padding around step groups */
+            .expanded { display: block; }
+            .toggle-icon { display: inline-block; width: 20px; text-align: center; font-weight: bold; margin-right: 8px; color: var(--toggle-icon-color); transition: color 0.3s; }
+            /* <<< MODIFIED: Style for the new scores container in the header >>> */
+            .scores-container { margin-left: 15px; font-style: italic; color: var(--subheader-color); font-size: 0.9em; font-weight: normal; }
+            .chapter-scores { font-size: 0.9em; margin-top: 5px; font-style: italic; color: var(--subheader-color); } /* Style for chapter scores (within judge section) */
+            .final-scores { font-size: 1.0em; margin-top: 8px; font-weight: bold; color: var(--header-color); } /* Style for final scores (within judge section) */
+            h1.main-title, .back-button, .control-select, .form-check-label, .top-controls { font-family: var(--font-ui) !important; }
+            .iteration-header, .prompt-header, .judge-header { font-family: var(--font-body) !important; } /* <<< CHANGE >>> Added judge-header */
+            @media screen and (max-width: 768px) {
+                body.theme-cozy, body.theme-modern { max-width: 100%; margin: 10px 5px; padding: 15px 10px; }
+                body.theme-cozy h1, body.theme-modern h1 { font-size: 1.8em; padding-bottom: 10px; margin-bottom: 1em; }
+                body.theme-cozy h2, body.theme-modern h2 { font-size: 1.5em; }
+                body.theme-cozy h3, body.theme-modern h3 { font-size: 1.2em; }
+                body.theme-cozy .iteration-header, body.theme-modern .iteration-header { padding: 10px 12px; font-size: 1.1em; } /* Adjust font size */
+                body.theme-cozy .prompt-header, body.theme-modern .prompt-header { padding: 8px 12px; }
+                body.theme-cozy .content-block, body.theme-modern .content-block { padding: 10px 12px; }
+                body.theme-cozy .collapsible-content, body.theme-modern .collapsible-content { padding: 10px 15px; } /* Adjust padding */
+                body.theme-cozy .top-controls, body.theme-modern .top-controls { flex-direction: column; align-items: flex-start; gap: 10px; }
+                body.theme-cozy .controls-right, body.theme-modern .controls-right { width: 100%; justify-content: space-between; }
+                /* <<< MODIFIED: Adjust scores container on mobile >>> */
+                .scores-container { display: block; margin-left: 0; margin-top: 5px; font-size: 0.85em; }
+            }
+        </style>
+    </head>
+    <body class="theme-cozy">
+        <div class="top-controls">
+            <div class="nav-left">
+                <a href="javascript:history.back()" class="back-button">← Back</a>
+            </div>
+            <div class="controls-right">
+                <div class="control-select-wrapper">
+                    <select id="themeSelector" class="control-select" aria-label="Select Theme">
+                        <option value="cozy">Cozy</option>
+                        <option value="modern">Modern</option>
+                    </select>
+                </div>
+                <div class="control-select-wrapper">
+                    <select id="fontSelector" class="control-select" aria-label="Select Font">
+                        <option value="tiempos">Tiempos Text</option> <option value="bookerly">Bookerly</option>
+                        <option value="bitter">Bitter Pro</option> <option value="roboto">Roboto</option>
+                        <option value="inter">Inter</option> <option value="source_sans">Source Sans 3</option>
+                        <option value="open_sans">Open Sans</option> <option value="fira_sans">Fira Sans</option>
+                        <option value="besley">Besley</option>
+                    </select>
+                </div>
+                <div class="mode-toggle">
+                    <input class="form-check-input" type="checkbox" id="darkModeToggle">
+                    <label class="form-check-label" for="darkModeToggle" id="toggleLabel">Light</label>
+                </div>
+            </div>
+        </div>
+
+        <h1 class="main-title">sam-paech/Qwen3-14B-antislop-exp17</h1>
+    <h2>No completed iterations found for this run.</h2>
+        <script>
+            // --- PASTE THE FULL JAVASCRIPT FROM THE PREVIOUS CREATIVE WRITING NOTEBOOK HERE ---
+            // (No changes needed in JS for the new structure, just ensure IDs are correct)
+            const body = document.body;
+            const themeSelector = document.getElementById('themeSelector');
+            const fontSelector = document.getElementById('fontSelector');
+            const darkModeToggle = document.getElementById('darkModeToggle');
+            const toggleLabel = document.getElementById('toggleLabel');
+            const FONT_MAP = { 'tiempos': "'Tiempos Text', Georgia, serif", 'bookerly': "'Bookerly', Georgia, serif", 'bitter': "'Bitter Pro', Georgia, serif", 'roboto': "'Roboto', sans-serif", 'inter': "'Inter', sans-serif", 'source_sans': "'Source Sans 3', sans-serif", 'open_sans': "'Open Sans', sans-serif", 'fira_sans': "'Fira Sans', sans-serif", 'besley': "'Besley', 'Merriweather', serif" };
+            const FONT_DEFINITIONS = { /* ... include full font definitions ... */
+                'tiempos': { family: 'Tiempos Text', variants: [ { weight: 400, style: 'normal', url: 'fonts/tiempos_text/TiemposText-Regular.woff2' }, { weight: 400, style: 'italic', url: 'fonts/tiempos_text/TiemposText-RegularItalic.woff2' }, { weight: 700, style: 'normal', url: 'fonts/tiempos_text/TiemposText-Bold.woff2' } ], fallback: 'Georgia, serif' },
+                'bookerly': { family: 'Bookerly', variants: [ { weight: 400, style: 'normal', url: 'fonts/bookerly/Bookerly.woff' }, { weight: 400, style: 'italic', url: 'fonts/bookerly/Bookerly Italic.woff' }, { weight: 700, style: 'normal', url: 'fonts/bookerly/Bookerly Bold.woff' } ], fallback: 'Georgia, serif' },
+                'bitter': { family: 'Bitter Pro', variants: [ { weight: 400, style: 'normal', url: 'fonts/bitter_pro/BitterPro-Regular.ttf' }, { weight: 400, style: 'italic', url: 'fonts/bitter_pro/BitterPro-Italic.ttf' }, { weight: 700, style: 'normal', url: 'fonts/bitter_pro/BitterPro-Bold.ttf' } ], fallback: 'Georgia, serif' },
+                'roboto': { family: 'Roboto', variants: [ { weight: 400, style: 'normal', url: 'fonts/roboto/static/Roboto-Regular.ttf' }, { weight: 400, style: 'italic', url: 'fonts/roboto/static/Roboto-Italic.ttf' }, { weight: 700, style: 'normal', url: 'fonts/roboto/static/Roboto-Bold.ttf' } ], fallback: 'sans-serif' },
+                'inter': { family: 'Inter', variants: [ { weight: 400, style: 'normal', url: 'fonts/inter/static/Inter-Regular.ttf' }, { weight: 400, style: 'italic', url: 'fonts/inter/static/Inter-Italic.ttf' }, { weight: 700, style: 'normal', url: 'fonts/inter/static/Inter-Bold.ttf' } ], fallback: 'sans-serif' },
+                'source_sans': { family: 'Source Sans 3', variants: [ { weight: 400, style: 'normal', url: 'fonts/source_sans_3/static/SourceSans3-Regular.ttf' }, { weight: 400, style: 'italic', url: 'fonts/source_sans_3/static/SourceSans3-Italic.ttf' }, { weight: 700, style: 'normal', url: 'fonts/source_sans_3/static/SourceSans3-Bold.ttf' } ], fallback: 'sans-serif' },
+                'open_sans': { family: 'Open Sans', variants: [ { weight: 400, style: 'normal', url: 'fonts/open_sans/static/OpenSans-Regular.ttf' }, { weight: 400, style: 'italic', url: 'fonts/open_sans/static/OpenSans-Italic.ttf' }, { weight: 700, style: 'normal', url: 'fonts/open_sans/static/OpenSans-Bold.ttf' } ], fallback: 'sans-serif' },
+                'fira_sans': { family: 'Fira Sans', variants: [ { weight: 400, style: 'normal', url: 'fonts/fira_sans/FiraSans-Regular.ttf' }, { weight: 400, style: 'italic', url: 'fonts/fira_sans/FiraSans-Italic.ttf' }, { weight: 700, style: 'normal', url: 'fonts/fira_sans/FiraSans-Bold.ttf' } ], fallback: 'sans-serif' },
+                'besley': { family: 'Besley', variants: [ { weight: 400, style: 'normal', url: 'fonts/besley/Besley-VariableFont_wght.ttf' }, { weight: 400, style: 'italic', url: 'fonts/besley/Besley-Italic-VariableFont_wght.ttf' } ], fallback: 'serif' }
+             };
+            const SANS_FONTS = ['roboto', 'inter', 'source_sans', 'open_sans', 'fira_sans'];
+            const THEME_DEFAULT_FONTS = { 'cozy': 'tiempos', 'modern': 'inter' };
+            const THEME_DEFAULT_HEAD_FONTS = { 'cozy': "'Lora', serif", 'modern': "'Besley', 'Merriweather', serif" };
+            const loadedFonts = new Set();
+            async function loadFontFace(fontKey) { if (loadedFonts.has(fontKey)) return; const fontDef = FONT_DEFINITIONS[fontKey]; if (!fontDef) { console.warn(`Font definition not found for: ${fontKey}`); return; } try { const fontLoadPromises = fontDef.variants.map(variant => { const fontFace = new FontFace( fontDef.family, `url(${variant.url})`, { weight: variant.weight, style: variant.style } ); return fontFace.load().then(loadedFont => { document.fonts.add(loadedFont); return loadedFont; }); }); await Promise.all(fontLoadPromises); loadedFonts.add(fontKey); console.log(`Loaded font: ${fontDef.family}`); } catch (err) { console.error(`Error loading font ${fontDef.family}:`, err); } }
+            function toggleContent(id) { const element = document.getElementById(id); if (!element) return; const isExpanded = element.classList.contains('expanded'); const header = element.previousElementSibling; const toggleIcon = header ? header.querySelector('.toggle-icon') : null; if (isExpanded) { element.classList.remove('expanded'); if (toggleIcon) toggleIcon.textContent = '+'; } else { element.classList.add('expanded'); if (toggleIcon) toggleIcon.textContent = '−'; } }
+            const STORAGE_PREFIX = 'longform_viewer_'; /* Changed prefix */
+            const KEYS = { THEME: `${STORAGE_PREFIX}theme`, FONT: `${STORAGE_PREFIX}font`, DARK_MODE: `longformViewerDarkModeEnabled` /* Changed key */ };
+            function saveSettings(type, value) { localStorage.setItem(KEYS[type], value); }
+            function setDarkMode(isDark) { body.classList.toggle('dark-mode', isDark); toggleLabel.textContent = isDark ? 'Dark' : 'Light'; if (darkModeToggle.checked !== isDark) { darkModeToggle.checked = isDark; } saveSettings('DARK_MODE', isDark); }
+            function applyTheme(themeName) { body.classList.remove('theme-cozy', 'theme-modern'); body.classList.add(`theme-${themeName}`); if (themeSelector.value !== themeName) { themeSelector.value = themeName; } saveSettings('THEME', themeName); const savedFont = localStorage.getItem(KEYS.FONT); const defaultFont = THEME_DEFAULT_FONTS[themeName] || 'tiempos'; applyFont(savedFont || defaultFont); }
+            async function applyFont(fontValue) { await loadFontFace(fontValue); const fontFamily = FONT_MAP[fontValue]; const currentTheme = localStorage.getItem(KEYS.THEME) || 'cozy'; let headingFontFamily = THEME_DEFAULT_HEAD_FONTS[currentTheme]; if (fontFamily) { body.style.setProperty('--font-body', fontFamily); if (currentTheme === 'modern') { headingFontFamily = THEME_DEFAULT_HEAD_FONTS['modern']; } else { headingFontFamily = THEME_DEFAULT_HEAD_FONTS['cozy']; } if (fontValue === 'besley') { headingFontFamily = FONT_MAP['besley']; } body.style.setProperty('--font-heading', headingFontFamily); if (fontSelector.value !== fontValue) { fontSelector.value = fontValue; } saveSettings('FONT', fontValue); } else { console.warn("Font value not found:", fontValue); const theme = localStorage.getItem(KEYS.THEME) || 'cozy'; applyFont(THEME_DEFAULT_FONTS[theme]); } }
+            darkModeToggle.addEventListener('change', function() { setDarkMode(this.checked); });
+            themeSelector.addEventListener('change', function() { applyTheme(this.value); });
+            fontSelector.addEventListener('change', function() { applyFont(this.value); });
+            async function applyInitialSettings() { const savedDarkMode = localStorage.getItem(KEYS.DARK_MODE); const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches; setDarkMode(savedDarkMode !== null ? (savedDarkMode === 'true') : prefersDark); const savedTheme = localStorage.getItem(KEYS.THEME) || 'cozy'; applyTheme(savedTheme); const savedFont = localStorage.getItem(KEYS.FONT) || THEME_DEFAULT_FONTS[savedTheme]; await applyFont(savedFont); fontSelector.value = savedFont || THEME_DEFAULT_FONTS[savedTheme]; }
+            applyInitialSettings();
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => { if (localStorage.getItem(KEYS.DARK_MODE) === null) { setDarkMode(event.matches); } });
+        </script>
+    </body>
+    </html>
+    

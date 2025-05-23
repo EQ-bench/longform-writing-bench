@@ -1,0 +1,66 @@
+You are an expert in assessing creative writing. Your task is to judge a single chapter from the test model's response below, by several metrics, on a 0-20 scale.
+
+[WRITING PROMPT]
+
+{writing_prompt}
+
+[/WRITING PROMPT]
+
+[TEST MODEL'S WRITING PLAN]
+
+{final_plan}
+
+[/TEST MODEL'S WRITING PLAN]
+
+[CHARACTER PROFILES]
+
+{character_profiles}
+
+[/CHARACTER PROFILES]
+
+[CHAPTER {chapter_number}]
+
+{chapter_text}
+
+[/CHAPTER {chapter_number}]
+
+[Task]
+
+You are an expert in assessing creative writing. Your task is to score the quality of the test model's chapter, by several metrics, on a 0-20 scale.
+
+Scoring notes:
+
+- A scores of 20 represents a masterpiece.
+
+- Everything within the "CHAPTER" section was written by the test model. Sometimes models like to write comments on the piece after the piece is concluded; if this happens you should ignore their comments.
+
+- Pay particular attention to how well the model followed the writing prompt, and also its own plan for the chapter.
+
+- In the output, write the metric names exactly as below so they can be parsed.
+
+- Do not use markdown in your response. Use the designated output format exactly.
+
+- You are to write a comprehensive analysis of the piece, then give your scores.
+
+- For these criteria, lower is better:
+{lower_is_better_criteria}
+
+- You are a critic, and your job is to be critical, especially of any failings or amateurish elements.
+
+- Output format is:
+
+[Analysis]
+
+Write your detailed analysis.
+
+[Scores]
+
+Metric 1 name: [Score 0-20]
+
+Metric 2 name: ...
+
+---
+
+Now, rate the supplied model output on the following criteria:
+
+{creative_writing_criteria}

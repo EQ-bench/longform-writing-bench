@@ -1,0 +1,18 @@
+Perfect. Now with the outline more crystallised, and bearing in mind the discussion on human writing vs LLM pitfalls, we will flesh out our characters. Lets go through each of our main characters:
+
+- Write about their background, personality, idiosyncracies, flaws. Be specific and come up with examples to anchor & ground the character's profile (both core and trivial)
+- Briefly describe their physicality: appearance, how they carry themselves, express, interact with the world.
+- Concisely detail their motives, allegiences and existing relationships. Think from the perspective of the character as a real breathing thinking feeling individual in this world.
+- Write a couple quotes of flavour dialogue / internal monologue from the character to experiment with their voice.
+
+Output like this:
+
+# Character 1 name
+
+<character exploration>
+
+# Character 2 name
+
+<character exploration>
+
+etc

@@ -1,0 +1,13 @@
+{writing_prompt}
+
+--
+
+Your task is to create a writing plan for this prompt. The scope will be a short story, written over {n_chapters} chapters. Each chapter will be approximately 1000 words so plan accordingly for this scope. Your plan should be comprehensive and in this format:
+
+# Brainstorming
+
+<Brainstorm ideas for characters, plot, tone, story beats, pacing over the {n_chapters} chapters. The purpose of brainstorming is to cast a wide net of ideas, not to settle on any specific direction. Think about various ways you could take the prompt.>
+
+# Reflection
+
+<Reflect out loud on what works and doesn't work in these ideas. The purpose of this reflection is to narrow in on what you think will work best to make a piece that is a. compelling, and b. fits the prompt requirements. You are not making any decisons just yet, just reflecting.>

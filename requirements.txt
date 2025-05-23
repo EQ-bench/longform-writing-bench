@@ -1,0 +1,28 @@
+# requirements.txt for Creative Writing Benchmark v3
+
+# For handling API requests
+requests
+
+# For loading environment variables from .env file
+python-dotenv
+
+# For numerical operations (used in scoring, ELO, metrics)
+numpy
+
+# For scientific and statistical functions (used in metrics)
+scipy
+
+# For progress bars
+tqdm
+
+# For natural language processing tasks (tokenization, syllable counting)
+nltk
+
+# For parallel processing (used in slop score calculation)
+joblib
+
+# Note: After installing nltk, you need to download required data:
+# Run python and enter:
+# import nltk
+# nltk.download('punkt')
+# nltk.download('cmudict')

@@ -1,0 +1,9 @@
+Ok now with these considerations in mind, formulate the final plan for the a humanlike, compelling short piece in {n_chapters} chapters. Bear in mind the constraints of the piece (each chapter is just 1000 words). Above all things, the plan must serve the original prompt. We will use the same format as before:
+
+# Intention
+
+<State your formulated intentions for the piece, synthesised from the the parts of the brainstorming session that worked, and avoiding the parts that didn't. Be explicit about the choices you have made about plot, voice, stylistic choices, things you intend to aim for & avoid.>
+
+# Chapter Planning
+
+<Write a brief chapter plan for all {n_chapters} chapters.>
