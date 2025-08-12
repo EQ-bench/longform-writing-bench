@@ -13,7 +13,7 @@ The benchmark evaluates several key abilities:
 - **Long-form Writing**: Producing a complete novella across 8 chapters (~1000 words each)
 - **Narrative Consistency**: Maintaining plot coherence and character consistency throughout
 
-Models on the EQ-Bench leaderboard are evaluated with Claude Sonnet 3.7 as a judge, although you can use whichever judge you wish. The judge scores outputs across multiple criteria including creativity, coherence, character development, and prose quality.
+Models on the EQ-Bench leaderboard are evaluated with Claude Sonnet 4 as a judge, although you can use whichever judge you wish. The judge scores outputs across multiple criteria including creativity, coherence, character development, and prose quality.
 
 ---
 
@@ -31,7 +31,7 @@ $EDITOR .env            # set TEST_API_KEY & JUDGE_API_KEY, or OPENAI_API_KEY
 # 3. Run one prompt, one iteration, four OS threads
 python3 longform_writing_bench.py \
     --test-model  "google/gemini-2.0-flash-001" \
-    --judge-model "anthropic/claude-3.7-sonnet" \
+    --judge-model "anthropic/claude-sonnet-4" \
     --runs-file   "results/longform_bench_runs.json" \
     --run-id      "demo" \
     --threads     12 \
@@ -98,7 +98,7 @@ All I/O uses atomic writes with per-file locks (`utils/file_io.py`), so parallel
 ```bash
 python3 longform_writing_bench.py \
   --test-model  "openai/gpt-4o" \
-  --judge-model "anthropic/claude-3.7-sonnet" \
+  --judge-model "anthropic/claude-sonnet-4" \
   --runs-file   "results/longform_bench_runs.json" \
   --run-id      "demo" \
   --skip-generation \
