@@ -28,7 +28,7 @@ def signal_handler(signum, frame):
 def main():
     parser = argparse.ArgumentParser(description="Run Long-Form Creative Writing Benchmark.")
     parser.add_argument("--test-model", required=True, help="Identifier for the model being tested (e.g., 'openai/gpt-4o').")
-    parser.add_argument("--judge-model", required=True, help="Identifier for the model used for judging (e.g., 'anthropic/claude-3.5-sonnet').")
+    parser.add_argument("--judge-model", required=True, help="Identifier for the model(s) used for judging. For an ensemble, provide a comma-separated list (e.g., 'anthropic/claude-3.5-sonnet,google/gemini-1.5-pro').")
     parser.add_argument("--runs-file", default=os.path.join("results", RUNS_FILENAME), help=f"JSON file to store run data and results (default: results/{RUNS_FILENAME}).")
     parser.add_argument("--data-dir", default="data", help="Directory containing prompts, criteria, etc. (default: data).")
     parser.add_argument("--run-id", help="Optional: Specify a base ID for the run key to group runs or resume.")
@@ -54,6 +54,12 @@ def main():
         os.makedirs(results_dir)
         logging.info(f"Created results directory: {results_dir}")
 
+    # Parse judge models from comma-separated string
+    judge_models = [j.strip() for j in args.judge_model.split(',') if j.strip()]
+    if not judge_models:
+        logging.critical("No judge model specified. Please provide at least one model for --judge-model.")
+        sys.exit(1)
+
     # Hook signals for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
     signal.signal(signal.SIGTERM, signal_handler) # kill command
@@ -61,7 +67,7 @@ def main():
     try:
         run_key = run_longform_bench(
             test_model=args.test_model,
-            judge_model=args.judge_model,
+            judge_models=judge_models,
             runs_file=args.runs_file,
             data_dir=args.data_dir,
             num_threads=args.threads,

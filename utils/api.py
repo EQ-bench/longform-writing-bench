@@ -9,6 +9,43 @@ import string
 from typing import Optional, Dict, Any, List # Added List
 from dotenv import load_dotenv
 import re
+import ftfy
+
+def unmojibake(text: str, max_passes: int = 3) -> str:
+    """Return `text` with common UTF-8 mojibake fixed."""
+    # Fast path: nothing looks suspicious
+    if "Ã" not in text and "Â" not in text:
+        return text
+
+    fixed = ftfy.fix_text(text)
+    if fixed != text:
+        return fixed
+
+    # Manual fallback: repeat latin-1 → UTF-8 round-trips
+    for _ in range(max_passes):
+        try:
+            text = text.encode("latin1").decode("utf-8")
+        except UnicodeDecodeError:
+            break
+        if "Ã" not in text and "Â" not in text:
+            return text
+    return text
+
+def _log_failed_response(resp: requests.Response, attempt: int) -> None:
+    """Dump as much detail as OpenRouter gives us."""
+    try:
+        err = resp.json()          # will be {'error': {...}}
+    except ValueError:
+        err = {"raw_text": resp.text}
+
+    logging.error(
+        "HTTP %s on attempt %s | provider=%s | message=%s | raw=%s",
+        resp.status_code,
+        attempt + 1,
+        err.get("error", {}).get("metadata", {}).get("provider_name"),
+        err.get("error", {}).get("message"),
+        err.get("error", {}).get("metadata", {}).get("raw"),
+    )
 
 load_dotenv()
 
@@ -18,7 +55,14 @@ class APIClient:
     Handles basic retry logic.
     """
 
-    def __init__(self, model_type=None, request_timeout=None, max_retries=None, retry_delay=None):
+    def __init__(self,
+                model_type: str | None = None,
+                request_timeout: int | None = None,
+                max_retries: int | None = None,
+                retry_delay: int | None = None,
+                *,
+                base_url_override: str | None = None,
+                api_key_override: str | None = None):
         self.model_type = model_type or "default" # 'test' or 'judge'
 
         # Load config with fallback to env vars defined in this file
@@ -26,15 +70,23 @@ class APIClient:
         default_retries = 3
         default_delay = 5
 
-        if model_type == "test":
-            self.api_key = os.getenv("TEST_API_KEY", os.getenv("OPENAI_API_KEY"))
-            self.base_url = os.getenv("TEST_API_URL", os.getenv("OPENAI_API_URL", "https://api.openai.com/v1/chat/completions"))
-        elif model_type == "judge":
-            self.api_key = os.getenv("JUDGE_API_KEY", os.getenv("OPENAI_API_KEY"))
-            self.base_url = os.getenv("JUDGE_API_URL", os.getenv("OPENAI_API_URL", "https://api.openai.com/v1/chat/completions"))
-        else: # Default/fallback
-            self.api_key = os.getenv("OPENAI_API_KEY")
-            self.base_url = os.getenv("OPENAI_API_URL", "https://api.openai.com/v1/chat/completions")
+        if self.model_type == "test":
+            env_key  = os.getenv("TEST_API_KEY",   os.getenv("OPENAI_API_KEY"))
+            env_url  = os.getenv("TEST_API_URL",   os.getenv("OPENAI_API_URL",
+                                                             "https://api.openai.com/v1/chat/completions"))
+        elif self.model_type == "judge":
+            env_key  = os.getenv("JUDGE_API_KEY",  os.getenv("OPENAI_API_KEY"))
+            env_url  = os.getenv("JUDGE_API_URL",  os.getenv("OPENAI_API_URL",
+                                                             "https://api.openai.com/v1/chat/completions"))
+        else:
+            env_key  = os.getenv("OPENAI_API_KEY")
+            env_url  = os.getenv("OPENAI_API_URL",
+                                 "https://api.openai.com/v1/chat/completions")
+
+        # ── per-instance overrides win ─────────────────────────────────────────
+        self.api_key   = api_key_override  if api_key_override  is not None else env_key
+        self.base_url  = base_url_override if base_url_override is not None else env_url
+
 
         self.request_timeout = int(request_timeout if request_timeout is not None else os.getenv("REQUEST_TIMEOUT", default_timeout))
         self.max_retries = int(max_retries if max_retries is not None else os.getenv("MAX_RETRIES", default_retries))
@@ -108,6 +160,22 @@ class APIClient:
                 payload['max_completion_tokens'] = max_tokens
                 payload['temperature'] = 1
 
+            if model in ['gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07']:
+                print('! high reasoning')
+                payload['reasoning_effort']="high"
+                del payload['max_tokens']
+                payload['max_completion_tokens'] = 32000
+                payload['temperature'] = 1
+
+            if model in ['gpt-5-chat-latest']:
+                del payload['max_tokens']
+                payload['max_completion_tokens'] = max_tokens
+                payload['temperature'] = 1
+
+            if model == 'openrouter/horizon-alpha':
+                del payload["temperature"]
+                del payload['min_p']
+
         return payload
 
     def _extract_content(self, data: Dict[str, Any]) -> str:
@@ -137,6 +205,25 @@ class APIClient:
             logging.error(f"Error parsing API response content: {e}. Response data: {data}")
             raise RuntimeError(f"Could not extract content from API response: {e}") from e
 
+    def _collect_stream(self, resp) -> str:
+        collected = []
+        for raw in resp.iter_lines(decode_unicode=True):
+            if not raw:
+                continue
+            if raw.startswith("data:"):
+                data = raw[5:].lstrip()           # strip "data:" prefix
+                if data == "[DONE]":
+                    break
+                try:
+                    obj = json.loads(data)
+                    delta = obj["choices"][0]["delta"].get("content")
+                    if delta:
+                        collected.append(delta)
+                except (json.JSONDecodeError, KeyError):
+                    # ignore malformed chunks
+                    continue
+        return "".join(collected).strip()
+
     def _strip_thinking_blocks(self, content: str) -> str:
         """Removes common <thinking> or <reasoning> blocks."""
         patterns = [
@@ -152,17 +239,34 @@ class APIClient:
         return cleaned_content
 
 
-    def generate(self, model: str, messages: List[Dict[str, str]], temperature: float = 0.7, max_tokens: int = 4000, min_p: Optional[float] = None, use_random_seed: bool = False) -> str:
+    def generate(
+            self,
+            model: str,
+            messages: List[Dict[str, str]],
+            temperature: float = 0.7,
+            max_tokens: int = 4000,
+            min_p: Optional[float] = None,
+            use_random_seed: bool = False,
+            stream: bool = False,            # ← NEW
+    ) -> str:
+
         """
         Generates text using the configured API endpoint.
         'messages' should be in OpenAI format [{'role': 'user', 'content': '...'}].
         The method adapts the payload for different providers.
         """
         payload = self._prepare_payload(model, messages, temperature, max_tokens, min_p)
+        if stream:
+            payload["stream"] = True
 
+        #print('-----------------------------')
+        #for el in messages:
+        #    print(el['content'])
+        #print('-----------------------------')
 
-        # set a specific provider on openrouter if required
-        if False and model in ['meta-llama/llama-4-scout', 'meta-llama/llama-4-maverick']:
+        #if model in ['meta-llama/llama-4-scout', 'meta-llama/llama-4-maverick']:
+        if model in ['meta-llama/llama-4-scout', 'meta-llama/llama-4-maverick']:
+        #if model in ['meta-llama/llama-4-scout']:
             print('groqqing')
             payload['provider'] =  {
                 "order": [
@@ -181,6 +285,31 @@ class APIClient:
                 "allow_fallbacks": False
             }
 
+        if model in ['openai/gpt-oss-120b', 'openai/gpt-oss-20b']:
+            payload['provider'] =  {
+                "order": [
+                    "Fireworks"
+                ],
+                "allow_fallbacks": False
+            }
+
+        # disable reasoning for anthropic models
+        if model.startswith('anthropic'):
+            payload["reasoning"] = {
+                "max_tokens": 0   
+            }
+
+        nothink=False
+        if 'qwen3' in model.lower():
+            # optionally disable thinking for qwen3 models
+            print('/no_think')
+            nothink=True
+
+        if 'proxy.runpod.net' in self.base_url:
+            if model.startswith('sam-paech/Qwen3'):
+                print('/no_think')
+                nothink=True
+
         if use_random_seed:
             print('using random seed')
             seed_lines = [
@@ -191,17 +320,30 @@ class APIClient:
                 "\n".join(seed_lines) +
                 "\n</RANDOM SEED>"
             )
-            messages = [{"role": "system", "content": random_seed_block}] + messages
 
-        if self.base_url == "https://openrouter.ai/api/v1/chat/completions":
-            if 'qwen3' in model.lower():
-                # optionally disable thinking for qwen3 models
-                print('/no_think')
+            if nothink:
+                random_seed_block += '\n\n/no_think'
+
+            messages = [{"role": "system", "content": random_seed_block}] + messages
+        else:
+            if nothink:
                 system_msg = [{"role": "system", "content": "/no_think"}]
                 messages = system_msg + messages
 
+        #if self.base_url == "https://openrouter.ai/api/v1/chat/completions":
+        
+
+        #if model == 'google/gemini-2.5-pro-preview':
+        #    print('!! gemini low thinking')
+        #    payload["reasoning"] = {                
+        #        #"effort": "low", # Can be "high", "medium", or "low" (OpenAI-style)
+        #        "max_tokens": 50, # Specific token limit (Anthropic-style)                
+        #        "exclude": True #Set to true to exclude reasoning tokens from response
+        #    }
+
         for attempt in range(self.max_retries):
             logging.debug(f"API Call Attempt {attempt+1}/{self.max_retries} to {self.model_type} model {model} via {self.base_url}")
+            # logging.debug(f"Payload: {json.dumps(payload, indent=2)}") # Uncomment for deep debugging
 
             response = None # Initialize response variable
             try:
@@ -209,16 +351,27 @@ class APIClient:
                     self.base_url,
                     headers=self.headers,
                     json=payload,
-                    timeout=self.request_timeout
+                    timeout=self.request_timeout if not stream else (10, None),  # long read timeout
+                    stream=stream
                 )
-                response.raise_for_status() # Raises HTTPError for bad responses (4xx or 5xx)
-                data = response.json()
-                # logging.debug(f"Raw API Response Data: {json.dumps(data, indent=2)}") # Uncomment for deep debugging
-                content = self._extract_content(data)
-                if not content and self.provider == "anthropic" and data.get("stop_reason") == "max_tokens":
-                     logging.warning(f"Anthropic response stopped due to max_tokens ({max_tokens}). Content might be incomplete.")
+                if response.status_code >= 400:
+                    _log_failed_response(response, attempt)
+                    response.raise_for_status()
+
+                response.raise_for_status()
+
+                if stream:
+                    content = self._collect_stream(response)
+                else:
+                    data = response.json()
+                    content = self._extract_content(data)
+
+                if '<think>' in content and '</think>' in content:
+                    content = content[content.find('</think>') + len('</think>'):]
 
                 logging.debug(f"API Call Successful. Received ~{len(content)} chars.")
+
+                content = unmojibake(content)
                 return content
 
             except requests.exceptions.Timeout:

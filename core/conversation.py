@@ -2,6 +2,7 @@
 import time
 import logging
 import os
+import statistics
 from typing import Dict, Any, List, Optional, Tuple
 
 from utils.api import APIClient
@@ -29,14 +30,15 @@ class LongformCreativeTask:
         writing_prompt: str,
         iteration_index: int,
         test_model: str,
-        judge_model: str,
+        judge_models: List[str],
         prompt_templates: Dict[int, str]
     ):
         self.prompt_id = prompt_id
         self.writing_prompt = writing_prompt
         self.iteration_index = iteration_index
         self.test_model = test_model
-        self.judge_model = judge_model
+        self.judge_models = judge_models
+        self.judge_model = judge_models[0] # For backward compatibility
         self.prompt_templates = prompt_templates
 
         self.status = "initialized"
@@ -48,13 +50,19 @@ class LongformCreativeTask:
         # Stores the raw text output of each generation step (1..TOTAL_STEPS)
         self.step_outputs: Dict[str, str] = {}
 
-        # Chapter-level judging:
+        # Aggregated scores (for backward compat and main score)
         self.chapter_judge_scores: Dict[int, Dict[str, float]] = {}
         self.chapter_raw_judge_text: Dict[int, str] = {}
-
-        # Instead of a single dict/string, store multiple final-judge runs:
         self.final_judge_scores: List[Dict[str, float]] = []
         self.final_raw_judge_texts: List[str] = []
+        self.chapter_staccato_index: Dict[int, float] = {}
+
+        # New per-judge results storage
+        # List index corresponds to judge index in self.judge_models
+        self.chapter_judges_scores: List[Dict[int, Dict[str, float]]] = []
+        self.chapter_raw_judges_text: List[Dict[int, str]] = []
+        self.final_judges_scores: List[List[Dict[str, float]]] = []
+        self.final_raw_judges_texts: List[List[str]] = []
 
         self._final_plan_text: Optional[str] = None
         self._character_profiles_text: Optional[str] = None
@@ -120,6 +128,43 @@ class LongformCreativeTask:
         messages.append({"role": "user", "content": current_prompt_text})
 
         return messages
+    
+
+
+    def _recompute_aggregated_chapter_scores(self) -> None:
+        """
+        Re-derive **both**
+          • self.chapter_judge_scores  ← aggregated over all judges
+          • self.chapter_staccato_index ← fresh computation from text
+        Safe to call repeatedly; always overwrites the stored aggregates.
+        """
+        # ── 1. aggregate judge scores ──────────────────────────────
+        aggregated: dict[str, dict[str, float]] = {}
+        if self.chapter_judges_scores:
+            for ch in range(1, NUM_CHAPTERS + 1):
+                metrics: dict[str, list[float]] = {}
+                for judge_idx in range(len(self.judge_models)):
+                    ch_scores = self.chapter_judges_scores[judge_idx].get(str(ch), {})
+                    for metric, value in ch_scores.items():
+                        metrics.setdefault(metric, []).append(value)
+
+                if metrics:
+                    aggregated[str(ch)] = {
+                        m: statistics.mean(vals) for m, vals in metrics.items() if vals
+                    }
+        self.chapter_judge_scores = aggregated
+
+        # ── 2. recompute staccato index from saved chapter texts ──
+        from core.metrics import calculate_staccato_index  # local import to avoid cycles
+        staccato: dict[int, float] = {}
+        for ch in range(1, NUM_CHAPTERS + 1):
+            step_num = NUM_PLANNING_STEPS + ch  # FIRST_CHAPTER_STEP_INDEX == 6
+            ch_text = self.step_outputs.get(str(step_num), "")
+            if ch_text:
+                staccato[ch] = calculate_staccato_index(ch_text)
+        self.chapter_staccato_index = staccato
+
+
 
     def run_generation_sequence(self, api_clients: Dict[str, APIClient], runs_file: str, run_key: str, save_interval: int = 1, retries: int = 5):
         """Runs the generation steps 1 through TOTAL_STEPS sequentially."""
@@ -131,7 +176,7 @@ class LongformCreativeTask:
         if not self.start_time:
             self.start_time = time.time()
 
-        test_api = api_clients["test"]        
+        test_api = api_clients["test"]
 
         for step in range(self.current_step + 1, TOTAL_STEPS + 1):
             self.current_step = step
@@ -167,13 +212,24 @@ class LongformCreativeTask:
                     else:
                         attempt += 1
                         self._log('error', f"Response too short. Attempt {str(attempt)}. Response: {response}")
-                    
+
 
                 if not response or len(response.strip()) < 500: # Basic check for empty/very short response
                     raise ValueError(f"Generation for step {step} produced an unexpectedly short or empty response.")
 
                 self.step_outputs[str(step)] = response.strip()
-                self._log('info', f"Completed generation step {step}. Output length: ~{len(response)} chars.")
+
+                # Compute short-sentence metric for chapter steps
+                if step >= FIRST_CHAPTER_STEP_INDEX:
+                    chapter_num = step - NUM_PLANNING_STEPS
+                    from core.metrics import calculate_staccato_index
+                    st_idx = calculate_staccato_index(self.step_outputs[str(step)])
+                    self.chapter_staccato_index[chapter_num] = st_idx
+                    self._log('info',
+                              f"Staccato index for chapter {chapter_num}: {st_idx:.2f}")
+
+                self._log('info',
+                          f"Completed generation step {step}. Output length: ~{len(response)} chars.")
 
                 # Save state periodically
                 if step % save_interval == 0 or step == TOTAL_STEPS:
@@ -205,85 +261,118 @@ class LongformCreativeTask:
         runs_file: str,
         run_key: str
     ):
-        """Judges each generated chapter (steps 6-13) individually."""
+        """Judges each generated chapter individually with an ensemble of judges."""
         if self.status not in ["generated", "judging_chapters"]:
-             if self.status != "error": # Don't log warning if already errored
-                 self._log('warning', f"Cannot judge chapters, status is '{self.status}'. Generation might be incomplete or failed.")
-             return
+            if self.status != "error": # Don't log warning if already errored
+                self._log('warning', f"Cannot judge chapters, status is '{self.status}'. Generation might be incomplete or failed.")
+            return
 
         # Ensure plan and characters are available
         final_plan = self.step_outputs.get(str(PLAN_STEP_INDEX))
         char_profiles = self.step_outputs.get(str(CHAR_PROFILE_STEP_INDEX))
         if not final_plan or not char_profiles:
-             self.error_message = "Cannot judge chapters: Missing final plan or character profiles."
-             self.status = "error"
-             self._log('error', self.error_message)
-             self._save_state(runs_file, run_key)
-             return
+            self.error_message = "Cannot judge chapters: Missing final plan or character profiles."
+            self.status = "error"
+            self._log('error', self.error_message)
+            self._save_state(runs_file, run_key)
+            return
 
         self.status = "judging_chapters"
-        judge_api = api_clients["judge"]
 
-        for chapter_num in range(1, NUM_CHAPTERS + 1):
-            step_num = FIRST_CHAPTER_STEP_INDEX + chapter_num - 1
+        # Initialize per-judge result storage if not already sized correctly
+        if len(self.chapter_judges_scores) != len(self.judge_models):
+            self.chapter_judges_scores = [{} for _ in self.judge_models]
+        if len(self.chapter_raw_judges_text) != len(self.judge_models):
+            self.chapter_raw_judges_text = [{} for _ in self.judge_models]
 
-            # Check if already judged
-            if str(chapter_num) in self.chapter_judge_scores:
-                self._log('info', f"Chapter {chapter_num} already judged, skipping.")
+        # Loop over each judge model
+        for judge_idx, judge_model_name in enumerate(self.judge_models):
+            self._log('info', f"--- Judging with model {judge_idx+1}/{len(self.judge_models)}: {judge_model_name} ---")
+
+            judge_api_key = f"judge_{judge_idx}"
+            judge_api = api_clients.get(judge_api_key)
+            if judge_api is None:
+                self._log('error', f"No API client configured for {judge_api_key}.")
                 continue
 
-            chapter_text = self.step_outputs.get(str(step_num))
-            if not chapter_text:
-                self._log('warning', f"Missing text for chapter {chapter_num} (step {step_num}). Cannot judge.")
-                self.chapter_judge_scores[str(chapter_num)] = {}
-                self.chapter_raw_judge_text[str(chapter_num)] = "[ERROR: Chapter text missing]"
-                continue # Skip judging this chapter
-
-            self._log('info', f"Judging chapter {chapter_num} (step {step_num})...")
-
-            # Prepare judge prompt
-            criteria_formatted = "\n".join([f"- {c}" for c in criteria])
-            neg_criteria_formatted = ", ".join(negative_criteria) if negative_criteria else "None"
-
-            final_judge_prompt = judge_prompt_template \
-                .replace("{writing_prompt}", self.writing_prompt['writing_prompt']) \
-                .replace("{final_plan}", final_plan) \
-                .replace("{character_profiles}", char_profiles) \
-                .replace("{chapter_text}", chapter_text) \
-                .replace("{chapter_number}", str(chapter_num)) \
-                .replace("{creative_writing_criteria}", criteria_formatted) \
-                .replace("{lower_is_better_criteria}", neg_criteria_formatted)
+            self._log('info', f"--- Judging with model {judge_idx+1}/{len(self.judge_models)}: {judge_model_name} ---")
 
 
-            messages = [{"role": "user", "content": final_judge_prompt}]
+            for chapter_num in range(1, NUM_CHAPTERS + 1):
+                step_num = FIRST_CHAPTER_STEP_INDEX + chapter_num - 1
 
-            try:
-                # Use temperature 0 for consistent judging
-                judge_resp = judge_api.generate(self.judge_model, messages, temperature=0.0, max_tokens=16000, use_random_seed=True) # Allow ample tokens for judge reasoning + scores
-                scores_dict = parse_judge_scores_longform(judge_resp) # Use the specific parser
+                # Check if this specific judge has already judged this chapter
+                if str(chapter_num) in self.chapter_judges_scores[judge_idx]:
+                    self._log('info', f"Chapter {chapter_num} already judged by {judge_model_name}, skipping.")
+                    continue
 
-                if not scores_dict:
-                     self._log('warning', f"Could not parse scores from judge response for chapter {chapter_num}.")
-                     # Store empty scores but keep raw text for debugging
-                     self.chapter_judge_scores[chapter_num] = {}
-                else:
-                     self.chapter_judge_scores[chapter_num] = scores_dict
+                chapter_text = self.step_outputs.get(str(step_num))
+                if not chapter_text:
+                    self._log('warning', f"Missing text for chapter {chapter_num} (step {step_num}). Cannot judge.")
+                    self.chapter_judges_scores[judge_idx][str(chapter_num)] = {}
+                    self.chapter_raw_judges_text[judge_idx][str(chapter_num)] = "[ERROR: Chapter text missing]"
+                    continue
 
-                self.chapter_raw_judge_text[chapter_num] = judge_resp
-                self._log('info', f"Completed judging chapter {chapter_num}.")
+                self._log('info', f"Judge {judge_model_name} is judging chapter {chapter_num} (step {step_num})...")
 
-            except Exception as e:
-                error_msg = f"Error during judging chapter {chapter_num}: {str(e)}"
-                self._log('exception', error_msg)
-                self.chapter_judge_scores[chapter_num] = {}
-                self.chapter_raw_judge_text[chapter_num] = f"[ERROR: {error_msg}]"
-                # Optionally set task status to error here, or allow final judging attempt
+                # Prepare judge prompt
+                criteria_formatted = "\n".join([f"- {c}" for c in criteria])
+                neg_criteria_formatted = ", ".join(negative_criteria) if negative_criteria else "None"
+                final_judge_prompt = judge_prompt_template.replace("{writing_prompt}", self.writing_prompt['writing_prompt']).replace("{final_plan}", final_plan).replace("{character_profiles}", char_profiles).replace("{chapter_text}", chapter_text).replace("{chapter_number}", str(chapter_num)).replace("{creative_writing_criteria}", criteria_formatted).replace("{lower_is_better_criteria}", neg_criteria_formatted)
+                messages = [{"role": "user", "content": final_judge_prompt}]
 
-            # Save state after each chapter judgement
-            self._save_state(runs_file, run_key)
+                try:
+                    judge_resp = judge_api.generate(judge_model_name, messages, temperature=0.0, max_tokens=16000, use_random_seed=True)
+                    scores_dict = parse_judge_scores_longform(judge_resp)
+
+                    if not scores_dict:
+                         self._log('warning', f"Could not parse scores from judge {judge_model_name} for chapter {chapter_num}.")
+                         self.chapter_judges_scores[judge_idx][str(chapter_num)] = {}
+                    else:
+                         self.chapter_judges_scores[judge_idx][str(chapter_num)] = scores_dict
+
+                    self.chapter_raw_judges_text[judge_idx][chapter_num] = judge_resp
+                    self._log('info', f"Completed judging chapter {chapter_num} with {judge_model_name}.")
+
+                except Exception as e:
+                    error_msg = f"Error during judging chapter {chapter_num} with {judge_model_name}: {str(e)}"
+                    self._log('exception', error_msg)
+                    self.chapter_judges_scores[judge_idx][str(chapter_num)] = {}
+                    self.chapter_raw_judges_text[judge_idx][str(chapter_num)] = f"[ERROR: {error_msg}]"
+
+                # Save state after each chapter judgement for each judge
+                self._save_state(runs_file, run_key)
+
+        # --- AGGREGATE SCORES ACROSS JUDGES ---
+        self._log('info', "Aggregating chapter scores across all judges...")
+        aggregated_scores = {}
+        for chapter_num in range(1, NUM_CHAPTERS + 1):
+            metrics_for_chapter = {} # { "metric_name": [score1, score2, ...], ... }
+            for judge_idx in range(len(self.judge_models)):
+                judge_scores = self.chapter_judges_scores[judge_idx].get(str(chapter_num), {})
+                for metric, score in judge_scores.items():
+                    if metric not in metrics_for_chapter:
+                        metrics_for_chapter[metric] = []
+                    metrics_for_chapter[metric].append(score)
+
+            # Average the scores for each metric
+            avg_scores_for_chapter = {}
+            for metric, score_list in metrics_for_chapter.items():
+                if score_list:
+                    avg_scores_for_chapter[metric] = statistics.mean(score_list)
+            aggregated_scores[str(chapter_num)] = avg_scores_for_chapter
+
+        self.chapter_judge_scores = aggregated_scores
+
+        # Ensure aggregate is consistent before persisting
+        self._recompute_aggregated_chapter_scores()
+        
+        # For backward compatibility, use the first judge's raw text
+        if self.chapter_raw_judges_text:
+            self.chapter_raw_judge_text = self.chapter_raw_judges_text[0]
 
         self._log('info', "Chapter judging completed.")
-        self.status = "judged_chapters" # Ready for final judging
+        self.status = "judged_chapters"
         self._save_state(runs_file, run_key)
 
 
@@ -297,8 +386,7 @@ class LongformCreativeTask:
         run_key: str
     ):
         """
-        Judges the complete story multiple times (NUM_FINAL_JUDGMENTS) and
-        appends all scores/results to self.final_judge_scores / self.final_raw_judge_texts.
+        Judges the complete story with an ensemble of judges, multiple times each.
         """
         if self.status not in ["judged_chapters", "judging_final"]:
             if self.status != "error":
@@ -316,47 +404,83 @@ class LongformCreativeTask:
                 full_story_parts.append(f"# Chapter {chapter_num}\n\n[ERROR: Text missing]")
         full_story = "\n\n---\n\n".join(full_story_parts)
 
-        self._log('info', f"Judging final piece {NUM_FINAL_JUDGMENTS} time(s) ...")
-        judge_api = api_clients["judge"]
+        self._log('info', f"Judging final piece with an ensemble of {len(self.judge_models)} judge(s), {NUM_FINAL_JUDGMENTS} time(s) each...")
 
         # Build the base prompt template
         criteria_formatted = "\n".join([f"- {c}" for c in criteria])
         neg_criteria_formatted = ", ".join(negative_criteria) if negative_criteria else "None"
+        base_prompt = judge_prompt_template.replace("{writing_prompt}", self.writing_prompt['writing_prompt']).replace("{full_story}", full_story).replace("{creative_writing_criteria}", criteria_formatted).replace("{lower_is_better_criteria}", neg_criteria_formatted)
 
-        base_prompt = judge_prompt_template \
-            .replace("{writing_prompt}", self.writing_prompt['writing_prompt']) \
-            .replace("{full_story}", full_story) \
-            .replace("{creative_writing_criteria}", criteria_formatted) \
-            .replace("{lower_is_better_criteria}", neg_criteria_formatted)
+        # Initialize per-judge result storage if not sized correctly
+        if len(self.final_judges_scores) != len(self.judge_models):
+            self.final_judges_scores = [[] for _ in self.judge_models]
+        if len(self.final_raw_judges_texts) != len(self.judge_models):
+            self.final_raw_judges_texts = [[] for _ in self.judge_models]
 
-        # Loop multiple times
+        # Loop over each judge model
+        for judge_idx, judge_model_name in enumerate(self.judge_models):
+            self._log('info', f"--- Final judging with model {judge_idx+1}/{len(self.judge_models)}: {judge_model_name} ---")
+
+            judge_api_key = f"judge_{judge_idx}"
+            judge_api = api_clients.get(judge_api_key)
+            if judge_api is None:
+                self._log('error', f"No API client configured for {judge_api_key}.")
+                continue
+
+
+            # Loop multiple times for this judge
+            for run_index in range(NUM_FINAL_JUDGMENTS):
+                # Check if this judge has already done this run
+                if len(self.final_judges_scores[judge_idx]) > run_index:
+                    self._log('info', f"Final piece run {run_index+1} already judged by {judge_model_name}, skipping.")
+                    continue
+
+                messages = [{"role": "user", "content": base_prompt}]
+                try:
+                    judge_resp = judge_api.generate(judge_model_name, messages, temperature=0.0, max_tokens=16000, use_random_seed=True)
+                    scores_dict = parse_judge_scores_longform(judge_resp)
+
+                    self.final_judges_scores[judge_idx].append(scores_dict if scores_dict else {})
+                    self.final_raw_judges_texts[judge_idx].append(judge_resp)
+                    self._log('info', f"Final piece judged by {judge_model_name} (run {run_index+1}/{NUM_FINAL_JUDGMENTS}).")
+
+                except Exception as e:
+                    error_msg = f"Error during final judging run {run_index+1} with {judge_model_name}: {str(e)}"
+                    self._log('exception', error_msg)
+                    self.final_judges_scores[judge_idx].append({})
+                    self.final_raw_judges_texts[judge_idx].append(f"[ERROR: {error_msg}]")
+
+                # Save after each final-judge run
+                self._save_state(runs_file, run_key)
+
+        # --- AGGREGATE FINAL SCORES ACROSS JUDGES ---
+        self._log('info', "Aggregating final scores across all judges...")
+        aggregated_final_scores = []
         for run_index in range(NUM_FINAL_JUDGMENTS):
-            messages = [{"role": "user", "content": base_prompt}]
-            try:
-                judge_resp = judge_api.generate(
-                    self.judge_model,
-                    messages,
-                    temperature=0.0,
-                    max_tokens=16000,
-                    use_random_seed=True
-                )
-                # Parse scores
-                from core.scoring import parse_judge_scores_longform
-                scores_dict = parse_judge_scores_longform(judge_resp)
+            metrics_for_run = {} # { "metric_name": [score1, score2, ...], ... }
+            for judge_idx in range(len(self.judge_models)):
+                # Ensure the judge has results for this run
+                if len(self.final_judges_scores[judge_idx]) > run_index:
+                    judge_scores_for_run = self.final_judges_scores[judge_idx][run_index]
+                    for metric, score in judge_scores_for_run.items():
+                        if metric not in metrics_for_run:
+                            metrics_for_run[metric] = []
+                        metrics_for_run[metric].append(score)
 
-                self.final_judge_scores.append(scores_dict if scores_dict else {})
-                self.final_raw_judge_texts.append(judge_resp)
+            # Average the scores for each metric for this run
+            avg_scores_for_run = {}
+            for metric, score_list in metrics_for_run.items():
+                if score_list:
+                    avg_scores_for_run[metric] = statistics.mean(score_list)
+            aggregated_final_scores.append(avg_scores_for_run)
 
-                self._log('info', f"Final piece judged (run {run_index+1}/{NUM_FINAL_JUDGMENTS}).")
+        self.final_judge_scores = aggregated_final_scores
+        # For backward compatibility, use the first judge's raw text
+        if self.final_raw_judges_texts and self.final_raw_judges_texts[0]:
+            self.final_raw_judge_texts = self.final_raw_judges_texts[0]
+        else:
+            self.final_raw_judge_texts = []
 
-            except Exception as e:
-                error_msg = f"Error during final judging run {run_index+1}: {str(e)}"
-                self._log('exception', error_msg)
-                self.final_judge_scores.append({})
-                self.final_raw_judge_texts.append(f"[ERROR: {error_msg}]")
-
-            # Save after each final-judge run
-            self._save_state(runs_file, run_key)
 
         # After all final judgements
         self.status = "completed"
@@ -374,17 +498,24 @@ class LongformCreativeTask:
             "iteration_index": self.iteration_index,
             "test_model": self.test_model,
             "judge_model": self.judge_model,
+            "judge_models": self.judge_models,
             "status": self.status,
             "current_step": self.current_step,
             "start_time": self.start_time,
             "end_time": self.end_time,
             "error_message": self.error_message,
             "step_outputs": self.step_outputs,
+            # Aggregated data for backward compatibility and main score
             "chapter_judge_scores": self.chapter_judge_scores,
             "chapter_raw_judge_text": self.chapter_raw_judge_text,
-            # Now storing a list of dicts, plus a list of strings:
             "final_judge_scores": self.final_judge_scores,
-            "final_raw_judge_texts": self.final_raw_judge_texts
+            "final_raw_judge_texts": self.final_raw_judge_texts,
+            "chapter_staccato_index": self.chapter_staccato_index,
+            # New per-judge data
+            "chapter_judges_scores": self.chapter_judges_scores,
+            "chapter_raw_judges_text": self.chapter_raw_judges_text,
+            "final_judges_scores": self.final_judges_scores,
+            "final_raw_judges_texts": self.final_raw_judges_texts,
         }
 
     @classmethod
@@ -394,12 +525,18 @@ class LongformCreativeTask:
         """
         writing_prompt = data.get("writing_prompt", "Unknown Prompt")
 
+        # Backward compatibility: if 'judge_models' isn't present, create it from 'judge_model'
+        if "judge_models" not in data or not data["judge_models"]:
+            judge_models = [data["judge_model"]] if "judge_model" in data else []
+        else:
+            judge_models = data["judge_models"]
+
         obj = cls(
             prompt_id=data["prompt_id"],
             writing_prompt=writing_prompt,
             iteration_index=data["iteration_index"],
             test_model=data["test_model"],
-            judge_model=data["judge_model"],
+            judge_models=judge_models,
             prompt_templates=prompt_templates
         )
         obj.status = data.get("status", "initialized")
@@ -408,12 +545,19 @@ class LongformCreativeTask:
         obj.end_time = data.get("end_time")
         obj.error_message = data.get("error_message")
         obj.step_outputs = data.get("step_outputs", {})
+
+        # Load aggregated data
         obj.chapter_judge_scores = data.get("chapter_judge_scores", {})
         obj.chapter_raw_judge_text = data.get("chapter_raw_judge_text", {})
-
-        # Load final_judge_scores and raw texts as lists
         obj.final_judge_scores = data.get("final_judge_scores", [])
         obj.final_raw_judge_texts = data.get("final_raw_judge_texts", [])
+
+        # Load new per-judge fields, defaulting to empty lists
+        obj.chapter_judges_scores = data.get("chapter_judges_scores", [])
+        obj.chapter_raw_judges_text = data.get("chapter_raw_judges_text", [])
+        obj.final_judges_scores = data.get("final_judges_scores", [])
+        obj.final_raw_judges_texts = data.get("final_raw_judges_texts", [])
+        obj.chapter_staccato_index = data.get("chapter_staccato_index", {})
 
         # Re-populate convenience accessors if already generated
         if obj.status in ["generated", "judging_chapters", "judged_chapters", "judging_final", "completed"]:
@@ -424,4 +568,5 @@ class LongformCreativeTask:
                 obj.step_outputs.get(str(i), "") for i in range(FIRST_CHAPTER_STEP_INDEX, TOTAL_STEPS + 1)
             ])
 
+        obj._recompute_aggregated_chapter_scores()
         return obj

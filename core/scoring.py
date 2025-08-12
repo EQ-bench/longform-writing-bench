@@ -137,7 +137,38 @@ def calculate_task_score(
                     chapter_weighted_sum += processed_value * weight
                     total_weight += weight
             if total_weight > 0:
-                valid_chapter_scores.append(chapter_weighted_sum / total_weight)
+                chapter_avg = chapter_weighted_sum / total_weight
+
+                # ──────────────────────────────────────────────
+                # Modulate by “staccato index”
+                #  <  5  →  no penalty
+                #  5–18 →  linear 0‒40 % penalty
+                #  > 18 →  fixed 40 % penalty
+                # We do **not** alter raw metric values; only this
+                # derived chapter score is scaled.
+                # ──────────────────────────────────────────────
+                try:
+                    chap_idx_int = int(chap_num_str)
+                except ValueError:
+                    chap_idx_int = None
+
+                stacc_map = task_data.get("chapter_staccato_index", {})
+                st_val = None
+                if chap_idx_int is not None and chap_idx_int in stacc_map:
+                    st_val = stacc_map[chap_idx_int]
+                elif chap_idx_int is not None and str(chap_idx_int) in stacc_map:
+                    st_val = stacc_map[str(chap_idx_int)]
+
+                if st_val is not None:
+                    if st_val < 5:
+                        factor = 1.0
+                    elif st_val <= 18:
+                        factor = 1.0 - ((st_val - 5) / 13.0) * 0.6  # 0‒40 % smoothly
+                    else:
+                        factor = 0.6  # 40 % penalty
+                    chapter_avg *= factor  # apply scaling
+
+                valid_chapter_scores.append(chapter_avg)
 
     avg_chapter_score = None
     if valid_chapter_scores:

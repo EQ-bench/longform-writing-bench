@@ -85,6 +85,7 @@ def compute_benchmark_results_longform(
 ):
     """
     Computes and saves the final benchmark score and bootstrap analysis for a run.
+    Handles both ensemble and per-judge scoring.
     """
     run_data = runs.get(run_key, {})
     if not run_data:
@@ -111,41 +112,88 @@ def compute_benchmark_results_longform(
 
     if not completed_tasks_data:
         logging.error(f"No successfully completed tasks found for run {run_key}. Cannot compute final score.")
-        # Update run status to reflect this?
         update_run_data(runs_file, run_key, {"status": "completed_no_tasks_scored", "end_time": datetime.now().isoformat()})
         return
 
     logging.info(f"Calculating final results for run {run_key} based on {len(completed_tasks_data)} completed tasks.")
 
-    # 1. Aggregate Scores
+    # 1. Aggregate Scores (Ensemble)
+    # This uses the main `chapter_judge_scores` and `final_judge_scores` which are pre-aggregated in the task object.
     agg_results = aggregate_longform_scores(completed_tasks_data, negative_criteria_chapter, negative_criteria_final)
     if "error" in agg_results:
-        logging.error(f"Failed to aggregate scores: {agg_results['error']}")
-        # Save error state?
+        logging.error(f"Failed to aggregate ensemble scores: {agg_results['error']}")
         update_run_data(runs_file, run_key, {"status": "completed_scoring_error", "results": {"benchmark_results": agg_results}, "end_time": datetime.now().isoformat()})
         return
 
-    logging.info(f"Aggregate Score (0-20): {agg_results['overall_score_0_20']}, EQBench Score (0-100): {agg_results['eqbench_longform_score_0_100']}")
+    logging.info(f"Ensemble Aggregate Score (0-20): {agg_results['overall_score_0_20']}, EQBench Score (0-100): {agg_results['eqbench_longform_score_0_100']}")
     logging.info(f"Scored {agg_results['num_tasks_scored']} out of {agg_results['num_tasks_total']} potential tasks.")
 
-    # 2. Bootstrap Analysis
+    # 2. Bootstrap Analysis (Ensemble)
     bootstrap_stats = bootstrap_benchmark_stability_longform(completed_tasks_data, negative_criteria_chapter, negative_criteria_final)
     if "error" in bootstrap_stats:
-        logging.error(f"Bootstrap analysis failed: {bootstrap_stats['error']}")
+        logging.error(f"Ensemble bootstrap analysis failed: {bootstrap_stats['error']}")
     else:
-        logging.info(f"Bootstrap 95% CI (0-20 scale): ({bootstrap_stats['ci_lower']:.2f}, {bootstrap_stats['ci_upper']:.2f}), Mean: {bootstrap_stats['bootstrap_mean']:.2f}")
+        logging.info(f"Ensemble Bootstrap 95% CI (0-20 scale): ({bootstrap_stats['ci_lower']:.2f}, {bootstrap_stats['ci_upper']:.2f}), Mean: {bootstrap_stats['bootstrap_mean']:.2f}")
 
 
-    # 3. Store Results in Run Data
-    # Ensure 'results' and 'benchmark_results' keys exist
+    # 3. Store Ensemble Results in Run Data
     results_dict = run_data.get("results", {})
     benchmark_results_dict = results_dict.get("benchmark_results", {})
-
-    # Update benchmark results with aggregation and bootstrap stats
-    benchmark_results_dict.update(agg_results) # Add overall scores, counts
-    benchmark_results_dict["bootstrap_analysis"] = bootstrap_stats # Add bootstrap results
-
+    benchmark_results_dict.update(agg_results)
+    benchmark_results_dict["bootstrap_analysis"] = bootstrap_stats
     results_dict["benchmark_results"] = benchmark_results_dict
+
+    # --- NEW: Per-Judge Analysis ---
+    judge_models_list = run_data.get("judge_models", [run_data.get("judge_model")])
+    if len(judge_models_list) > 1:
+        logging.info("Calculating per-judge results...")
+        results_per_judge = []
+        for judge_idx, judge_model_name in enumerate(judge_models_list):
+            logging.info(f"--- Analyzing for Judge {judge_idx+1}/{len(judge_models_list)}: {judge_model_name} ---")
+
+            # Create a virtual list of tasks with scores from only this judge
+            judge_specific_tasks_data = []
+            for task_data in completed_tasks_data:
+                task_copy = task_data.copy() # Shallow copy is fine
+
+                # Check if per-judge data exists and has the right index
+                if "chapter_judges_scores" in task_copy and len(task_copy["chapter_judges_scores"]) > judge_idx:
+                    task_copy["chapter_judge_scores"] = task_copy["chapter_judges_scores"][judge_idx]
+                else:
+                    logging.warning(f"Task {task_copy.get('prompt_id')} (iter {task_copy.get('iteration_index')}) missing chapter judging data for judge {judge_model_name}. Skipping for this judge's analysis.")
+                    continue
+
+                if "final_judges_scores" in task_copy and len(task_copy["final_judges_scores"]) > judge_idx:
+                    task_copy["final_judge_scores"] = task_copy["final_judges_scores"][judge_idx]
+                else:
+                    logging.warning(f"Task {task_copy.get('prompt_id')} (iter {task_copy.get('iteration_index')}) missing final judging data for judge {judge_model_name}. Skipping for this judge's analysis.")
+                    continue
+
+                judge_specific_tasks_data.append(task_copy)
+
+            if not judge_specific_tasks_data:
+                logging.warning(f"No completed tasks found with scores for judge {judge_model_name}. Skipping per-judge analysis for them.")
+                continue
+
+            # Aggregate scores for this judge
+            agg_judge = aggregate_longform_scores(judge_specific_tasks_data, negative_criteria_chapter, negative_criteria_final)
+            if "error" in agg_judge:
+                logging.error(f"Failed to aggregate scores for judge {judge_model_name}: {agg_judge['error']}")
+                continue
+
+            # Bootstrap for this judge
+            bootstrap_judge = bootstrap_benchmark_stability_longform(judge_specific_tasks_data, negative_criteria_chapter, negative_criteria_final)
+            if "error" in bootstrap_judge:
+                logging.error(f"Bootstrap analysis failed for judge {judge_model_name}: {bootstrap_judge['error']}")
+
+            judge_result_entry = {
+                "judge_model": judge_model_name,
+                "benchmark_results": {**agg_judge, "bootstrap_analysis": bootstrap_judge}
+            }
+            results_per_judge.append(judge_result_entry)
+            logging.info(f"Judge {judge_model_name} EQBench Score: {agg_judge.get('eqbench_longform_score_0_100', 'N/A')}")
+
+        results_dict["results_per_judge"] = results_per_judge
 
     # Save the updated results back to the run file
     if not update_run_data(runs_file, run_key, {"results": results_dict}):
@@ -223,7 +271,7 @@ def load_prompt_templates(data_dir):
 
 def run_longform_bench(
     test_model: str,
-    judge_model: str,
+    judge_models: List[str],
     runs_file: str,
     data_dir: str = "data",
     num_threads: int = 4,
@@ -238,9 +286,10 @@ def run_longform_bench(
     """
     Main function to orchestrate the long-form creative writing benchmark.
     """
+    judge_model = judge_models[0] # For backward compatibility in logging and single-judge fields
     logging.info("--- Starting Long-Form Creative Writing Benchmark ---")
     logging.info(f"Test Model: {test_model}")
-    logging.info(f"Judge Model: {judge_model}")
+    logging.info(f"Judge Model(s): {judge_models}")
     logging.info(f"Iterations: {iterations}")
     logging.info(f"Threads: {num_threads}")
     logging.info(f"Runs File: {runs_file}")
@@ -249,7 +298,7 @@ def run_longform_bench(
     # --- Load Data Files ---
     logging.info("Loading data files...")
     # Load initial writing prompts
-    prompts_path = os.path.join(data_dir, PROMPTS_FILENAME)    
+    prompts_path = os.path.join(data_dir, PROMPTS_FILENAME)
     writing_prompts_all = load_json_file(prompts_path)
     print(writing_prompts_all)
     if not writing_prompts_all:
@@ -281,12 +330,20 @@ def run_longform_bench(
     run_key = f"{base_id}_{sanitized_model}"
 
     runs = load_json_file(runs_file)
+    # Logic to update judge models if they have changed on a resumed run
+    if run_key in runs and runs[run_key].get("judge_models") != judge_models:
+        logging.warning(f"Judge models for run {run_key} have changed. Updating from {runs[run_key].get('judge_models')} to {judge_models}. This may trigger re-judging.")
+        runs[run_key]["judge_models"] = judge_models
+        runs[run_key]["judge_model"] = judge_models[0]
+        save_json_file(runs, runs_file)
+
     if run_key not in runs:
         logging.info(f"Creating new run: {run_key}")
         init_dict = {
             "run_id_base": base_id,
             "test_model": test_model,
-            "judge_model": judge_model,
+            "judge_model": judge_model, # First judge for backward compat
+            "judge_models": judge_models,   # Full list of judges
             "iterations": iterations,
             "start_time": datetime.now().isoformat(),
             "status": "initializing",
@@ -331,27 +388,67 @@ def run_longform_bench(
                 logging.debug(f"Resuming task for prompt {prompt_id_str}, iteration {i}")
                 try:
                     task_obj = LongformCreativeTask.from_dict(task_data, prompt_templates)
-                    # Handle redo_judging logic
-                    if redo_judging:
-                        logging.info(f"Resetting judging state for task {prompt_id}, iteration {i} due to --redo-judging flag.")
+
+                    # ── ensure the current judge models are respected ───────────────────
+                    if task_obj.judge_models != judge_models:
+                        logging.info(
+                            f"Task {prompt_id_str} (iter {i}): switching judge_models "
+                            f"{task_obj.judge_models} → {judge_models}"
+                        )
+                        task_obj.judge_models = judge_models
+                        task_obj.judge_model = judge_models[0]
+
+                        # clear any scores/artefacts from the old judges
                         task_obj.chapter_judge_scores = {}
                         task_obj.chapter_raw_judge_text = {}
-                        
-                        # Here’s the crucial part for final judgments:
-                        task_obj.final_judge_scores = []       # Clear them out
-                        task_obj.final_raw_judge_texts = []    # Clear them out
+                        task_obj.final_judge_scores = []
+                        task_obj.final_raw_judge_texts = []
+                        # Also clear the new per-judge attributes
+                        task_obj.chapter_judges_scores = []
+                        task_obj.chapter_raw_judges_text = []
+                        task_obj.final_judges_scores = []
+                        task_obj.final_raw_judges_texts = []
 
-                        # Reset status if it was completed:
-                        if task_obj.status in ["judging_chapters", "judged_chapters", "judging_final", "completed"]:
+
+                        # rewind status if the task had already been judged
+                        if task_obj.status in [
+                            "judging_chapters", "judged_chapters",
+                            "judging_final",  "completed"
+                        ]:
                             task_obj.status = "generated"
-                        
-                        # Then save
+
                         task_obj._save_state(runs_file, run_key)
 
+                    # ── handle explicit --redo-judging flag ───────────────────────────
+                    if redo_judging:
+                        logging.info(
+                            f"Resetting judging state for task {prompt_id_str}, "
+                            f"iteration {i} due to --redo-judging flag."
+                        )
+                        task_obj.chapter_judge_scores = {}
+                        task_obj.chapter_raw_judge_text = {}
+                        task_obj.final_judge_scores = []
+                        task_obj.final_raw_judge_texts = []
+                        # Also clear the new per-judge attributes
+                        task_obj.chapter_judges_scores = []
+                        task_obj.chapter_raw_judges_text = []
+                        task_obj.final_judges_scores = []
+                        task_obj.final_raw_judges_texts = []
+
+                        if task_obj.status in [
+                            "judging_chapters", "judged_chapters",
+                            "judging_final",  "completed"
+                        ]:
+                            task_obj.status = "generated"
+
+                        task_obj._save_state(runs_file, run_key)
 
                     tasks_to_process.append(task_obj)
                 except Exception as e:
-                     logging.exception(f"Error loading task state for prompt {prompt_id_str}, iteration {i}. Skipping task. Data: {task_data}")
+                    logging.exception(
+                        f"Error loading task state for prompt {prompt_id_str}, iteration {i}. "
+                        f"Skipping task. Data: {task_data}"
+                    )
             else:
                 # Create new task
                 logging.debug(f"Creating new task for prompt {prompt_id_str}, iteration {i}")
@@ -360,21 +457,47 @@ def run_longform_bench(
                     writing_prompt=writing_prompt_text,
                     iteration_index=i,
                     test_model=test_model,
-                    judge_model=judge_model,
+                    judge_models=judge_models,
                     prompt_templates=prompt_templates
                 )
                 tasks_to_process.append(new_task)
                 # Save initial state of new task
                 new_task._save_state(runs_file, run_key)
 
+    for t in tasks_to_process:
+        if t.status == "completed":
+            logging.info(f"Re-computing aggregates for task {t.prompt_id}")
+            t._recompute_aggregated_chapter_scores()
+            t._save_state(runs_file, run_key)
+
+
     logging.info(f"Prepared {len(tasks_to_process)} tasks across {iterations} iteration(s).")
 
     # --- Initialize API Clients ---
     # Pass timeout/retry settings from config/env
-    api_clients = {
-        "test": APIClient(model_type="test"),
-        "judge": APIClient(model_type="judge")
-    }
+    api_clients: Dict[str, APIClient] = {"test": APIClient(model_type="test")}
+
+    for idx, _ in enumerate(judge_models):
+        if idx == 0:
+            # first judge → legacy env vars
+            api_clients["judge_0"] = APIClient(model_type="judge")
+            continue
+
+        url_var = f"JUDGE_API_URL_{idx+1}"
+        key_var = f"JUDGE_API_KEY_{idx+1}"
+        base_url_i = os.getenv(url_var)
+        api_key_i  = os.getenv(key_var)
+
+        if not base_url_i or not api_key_i:
+            raise ValueError(
+                f"Missing per-judge credentials: set both {url_var} and {key_var} "
+                f"for judge #{idx+1} ('{judge_models[idx]}')."
+            )
+        api_clients[f"judge_{idx}"] = APIClient(
+            model_type="judge",
+            base_url_override=base_url_i,
+            api_key_override=api_key_i,
+        )
 
     # --- Execute Stages ---
     update_run_data(runs_file, run_key, {"status": "running"})
@@ -501,10 +624,21 @@ def run_longform_bench(
     print("\n--- Benchmark Summary ---")
     print(f"Run Key: {run_key}")
     print(f"Test Model: {test_model}")
-    print(f"Longform Writing Score: {final_score_100}")
-    if ci_lower != 'N/A':
-        print(f"95% CI: ({ci_lower * 5:.2f}, {ci_upper * 5:.2f})")
-    print(f"Results saved in: {runs_file}")
+    print(f"Judge Model(s): {judge_models}")
+    print(f"Ensemble Longform Writing Score: {final_score_100}")
+    if ci_lower != 'N/A' and ci_upper != 'N/A':
+        print(f"Ensemble 95% CI (0-100 scale): ({ci_lower * 5:.2f}, {ci_upper * 5:.2f})")
+
+    # Print per-judge scores if they exist
+    per_judge_results = final_run_data.get("results", {}).get("results_per_judge", [])
+    if per_judge_results:
+        print("\n--- Per-Judge Scores ---")
+        for judge_res in per_judge_results:
+            judge_name = judge_res.get("judge_model", "Unknown Judge")
+            judge_score = judge_res.get("benchmark_results", {}).get("eqbench_longform_score_0_100", "N/A")
+            print(f"- {judge_name}: {judge_score}")
+
+    print(f"\nResults saved in: {runs_file}")
     print("------------------------")
 
 
