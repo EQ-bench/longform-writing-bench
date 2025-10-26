@@ -144,6 +144,7 @@ After install, run once:
 ```python
 import nltk
 nltk.download("punkt")
+nltk.download("punkt_tab")
 nltk.download("cmudict")
 nltk.download("stopwords")
 ```
